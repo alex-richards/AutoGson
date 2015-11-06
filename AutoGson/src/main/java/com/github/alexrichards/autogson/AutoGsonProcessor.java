@@ -60,28 +60,27 @@ public class AutoGsonProcessor extends AbstractProcessor {
         if (roundEnv.processingOver()) {
             for (final Map.Entry<PackageElement, Set<TypeElement>> entry : autoValueTypeElements.entrySet()) {
                 try {
-                    final String mapFieldName = "TYPES";
-
-                    final TypeVariableName t = TypeVariableName.get("T");
                     final TypeName classWildcardTypeName = TypeName.get(Class.class); // TODO ParameterizedTypeName.get(ClassName.get(Class.class), WildcardTypeName.subtypeOf(TypeName.OBJECT));
                     final TypeName mapTypeName = ParameterizedTypeName.get(ClassName.get(HashMap.class), classWildcardTypeName, classWildcardTypeName);
 
-                    final FieldSpec map = FieldSpec.builder(mapTypeName, mapFieldName, Modifier.PRIVATE, Modifier.STATIC, Modifier.FINAL)
+                    final FieldSpec mapField = FieldSpec.builder(mapTypeName, "TYPES", Modifier.PRIVATE, Modifier.STATIC, Modifier.FINAL)
                             .initializer("new $T()", mapTypeName)
                             .build();
 
                     final CodeBlock.Builder mappingInit = CodeBlock.builder();
                     for (final TypeElement typeElement : entry.getValue()) {
-                        mappingInit.addStatement("$N.put($L.class, $L.class)", map, getName(typeElement), getAutoValueName(typeElement));
+                        mappingInit.addStatement("$N.put($L.class, $L.class)", mapField, getName(typeElement), getAutoValueName(typeElement));
                     }
 
-                    final String gsonParameterName = "gson";
-                    final String typeParameterName = "type";
+                    final TypeVariableName t = TypeVariableName.get("T");
+                    final ParameterSpec gsonParameter = ParameterSpec.builder(Gson.class, "gson", Modifier.FINAL).build();
+                    final ParameterSpec typeParameter = ParameterSpec.builder(ParameterizedTypeName.get(ClassName.get(TypeToken.class), t), "type", Modifier.FINAL).build();
 
                     JavaFile.builder(entry.getKey().getQualifiedName().toString(),
                             TypeSpec.classBuilder("AutoGsonTypeAdapterFactory")
+                                    .addModifiers(Modifier.PUBLIC)
                                     .addSuperinterface(TypeAdapterFactory.class)
-                                    .addField(map)
+                                    .addField(mapField)
                                     .addStaticBlock(mappingInit.build())
                                     .addMethod(MethodSpec.methodBuilder("create")
                                             .addAnnotation(AnnotationSpec.builder(SuppressWarnings.class)
@@ -90,9 +89,9 @@ public class AutoGsonProcessor extends AbstractProcessor {
                                             .addTypeVariable(t)
                                             .addModifiers(Modifier.PUBLIC)
                                             .returns(ParameterizedTypeName.get(ClassName.get(TypeAdapter.class), t))
-                                            .addParameter(Gson.class, gsonParameterName, Modifier.FINAL)
-                                            .addParameter(ParameterizedTypeName.get(ClassName.get(TypeToken.class), t), typeParameterName, Modifier.FINAL)
-                                            .addStatement("return $L.getAdapter($L.get($L.getRawType()))", gsonParameterName, mapFieldName, typeParameterName)
+                                            .addParameter(gsonParameter)
+                                            .addParameter(typeParameter)
+                                            .addStatement("return $N.getAdapter($N.get($N.getRawType()))", gsonParameter, mapField, typeParameter)
                                             .build())
                                     .build())
                             .build()
