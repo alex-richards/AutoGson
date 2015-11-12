@@ -59,6 +59,7 @@ public class AutoGsonProcessor extends AbstractProcessor {
         for (final TypeElement annotation : annotations) {
             if (AutoValue.class.getCanonicalName().equals(annotation.getQualifiedName().toString())) {
                 final Map<PackageElement, Set<TypeElement>> autoValueTypeElements = new HashMap<>();
+                boolean packageAnnotationFound = false;
 
                 for (final Element autoValueElement : roundEnv.getElementsAnnotatedWith(annotation)) {
                     if (autoValueElement.getKind() != ElementKind.CLASS) {
@@ -68,6 +69,7 @@ public class AutoGsonProcessor extends AbstractProcessor {
                     }
 
                     final PackageElement packageElement = elementUtils.getPackageOf(autoValueElement);
+                    packageAnnotationFound = packageAnnotationFound || packageElement.getAnnotation(AutoGson.class) != null;
 
                     Set<TypeElement> typeElements = autoValueTypeElements.get(packageElement);
                     if (typeElements == null) {
@@ -79,6 +81,11 @@ public class AutoGsonProcessor extends AbstractProcessor {
 
                 for (final Map.Entry<PackageElement, Set<TypeElement>> entry : autoValueTypeElements.entrySet()) {
                     try {
+                        final PackageElement packageElement = entry.getKey();
+                        if (packageAnnotationFound && packageElement.getAnnotation(AutoGson.class) == null) {
+                            continue;
+                        }
+
                         final TypeName classWildcardTypeName = TypeName.get(Class.class); // TODO ParameterizedTypeName.get(ClassName.get(Class.class), WildcardTypeName.subtypeOf(TypeName.OBJECT));
                         final TypeName mapTypeName = ParameterizedTypeName.get(ClassName.get(HashMap.class), classWildcardTypeName, classWildcardTypeName);
 
@@ -97,7 +104,7 @@ public class AutoGsonProcessor extends AbstractProcessor {
 
                         final FieldSpec mappedTypeField = FieldSpec.builder(classWildcardTypeName, "mappedType", Modifier.FINAL).build();
 
-                        JavaFile.builder(entry.getKey().getQualifiedName().toString(),
+                        JavaFile.builder(packageElement.getQualifiedName().toString(),
                                 TypeSpec.classBuilder("AutoGsonTypeAdapterFactory")
                                         .addAnnotation(AnnotationSpec.builder(Generated.class)
                                                 .addMember("value", "$S", AutoGsonProcessor.class.getCanonicalName())
